@@ -22,56 +22,34 @@ void main() {
 
     float normDist = dist / radius;
 
-    // fora do círculo
     if ( normDist > 1.0 ) {
         discard;
     }
-
-    // suaviza a borda
-    float alpha = 1.0 - smoothstep( 0.95, 1.0, normDist );
+    
+    float alphaInkDrop = 1.0 - smoothstep( 0.95, 1.0, normDist );
     vec4 inkColor = fragColor;
 
-    
-    // vetor normal da superfície no ponto do fragmento
-    // para círculos/esferas, a normal aponta para fora do centro.
     vec2 normal = normalize( diff );
-
     float diffuseFactor = max( dot( normal, lightDirection ), 0.0 );
-    float shininess = 32.0; // "aperto" da faixa de brilho
+    float shininess = 32.0;
     float specularFactor = pow( diffuseFactor, shininess );
 
-    vec3 ambientColor = inkColor.rgb * 0.3; // cor ambiente base
-    vec3 difuseColor = inkColor.rgb * diffuseFactor * 0.5; // cor difusa
-    //vec3 specularColor = vec3( 1.0, 1.0, 1.0 ) * specularFactor * 0.7; // brilho especular
-    vec3 specularColor = vec3(1.0, 0.95, 0.57) * specularFactor * 0.7; // brilho especular
+    //vec3 ambientColor = inkColor.rgb * 0.3;
+    vec3 ambientColor = inkColor.rgb * 0.9;
+    vec3 difuseColor = inkColor.rgb * diffuseFactor * 0.5;
+    vec3 specularColor = vec3( 1.0, 0.95, 0.57 ) * specularFactor * 0.7;
 
-    vec3 finalInkColor = ambientColor + difuseColor + specularColor;
-    finalColor = vec4( finalInkColor, inkColor.a * alpha );
-    
+    vec3 finalInkDropColor = ambientColor + difuseColor + specularColor;
 
+    float innerRadiusFactor = 0.6; // Corresponde ao 0.6 do smoothstep no alpha-shader original
+    float alphaInnerRing = 1.0 - smoothstep( innerRadiusFactor, 1.0, normDist );
+    //vec3 innerRingColor = inkColor.rgb * 0.3; // Cor escura para o anel
+    vec3 innerRingColor = inkColor.rgb * 0.9; // Cor escura para o anel
 
+    vec3 combinedColor = finalInkDropColor;
+    float combinedAlpha = inkColor.a * alphaInkDrop;
 
-    /*
-    // cálculo do fator de iluminação (Lambertian diffuse)
-    float lightFactor = max( dot( normal, lightDirection ), 0.0 );
-
-    // aplicando
-    vec3 ambientColor = inkColor.rgb * 0.5; // cor base sem luz
-    vec3 diffuseColor = inkColor.rgb * lightFactor * 0.5; // intesidade da luz difusa
-
-    // cor final
-    vec3 finalInkColor = ambientColor + diffuseColor;
-
-    finalColor = vec4( finalInkColor.rgb, inkColor.a * alpha );
-    */
-
-
-
-
-    /*
-    float brightness = 1.0 - normDist * 0.3;
-    inkColor.rgb *= brightness;
-    finalColor = vec4( inkColor.rgb, inkColor.a * alpha );
-    */
+    combinedColor = mix( combinedColor, innerRingColor, alphaInnerRing );
+    finalColor = vec4( combinedColor, combinedAlpha );
 
 }

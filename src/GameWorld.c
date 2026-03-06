@@ -17,28 +17,30 @@
 //#include "raylib/raygui.h"       // other compilation units must only include
 //#undef RAYGUI_IMPLEMENTATION     // raygui.h
 
-#define MAX_CIRCLES 2000
+#define MAX_INK_DROPS 2000
+#define USE_MOUSE_AS_LIGHT_SOURCE false
 
-int centerLoc;
-int radiusLoc;
-int screenResLoc;
-int lightDirectionLoc;
-int circleCount;
-
-int centerAlphaLoc;
-int radiusAlphaLoc;
-
-typedef struct Circle {
-    Vector2 pos;
+typedef struct InkDrop {
+    Vector2 center;
     float radius;
     Color color;
     Vector2 lightDirection;
-} Circle;
+} InkDrop;
 
-void drawCircle( Circle *c );
+void createInkDrop( float x, float y, float radius, Color color, Vector2 lightSource );
+void createInkDrops( float x, float y, float radius, Color color, int quant, Vector2 lightSource );
+void drawInkDrop( InkDrop *c );
 
-Vector2 screenResolution;
-Circle circles[MAX_CIRCLES];
+// shader related variables
+static int centerLoc;
+static int radiusLoc;
+static int screenResLoc;
+static int lightDirectionLoc;
+static int inkDropCount;
+static Vector2 screenResolution;
+
+static Vector2 lightSource;
+static InkDrop circles[MAX_INK_DROPS];
 
 /**
  * @brief Creates a dinamically allocated GameWorld struct instance.
@@ -54,11 +56,16 @@ GameWorld* createGameWorld( void ) {
     screenResLoc = GetShaderLocation( rm.inkDropShader, "screenResolution" );
     lightDirectionLoc = GetShaderLocation( rm.inkDropShader, "lightDirection" );
 
-    centerAlphaLoc = GetShaderLocation( rm.alphaShader, "center" );
-    radiusAlphaLoc = GetShaderLocation( rm.alphaShader, "radius" );
+    lightSource = (Vector2) { 4000, -2000 };
 
-    circles[0] = (Circle) { .pos = { GetScreenWidth() / 2, GetScreenHeight() / 2 }, .radius = 50, .color = BLUE };
-    circleCount++;
+    createInkDrops( 
+        GetScreenWidth() / 2, 
+        GetScreenHeight() / 2, 
+        50, 
+        (Color) { 4, 123, 232, 255 },
+        3,
+        lightSource
+    );
 
     return gw;
 
@@ -79,35 +86,89 @@ void updateGameWorld( GameWorld *gw, float delta ) {
     screenResolution = (Vector2) { GetScreenWidth(), GetScreenHeight() };
     SetShaderValue( rm.inkDropShader, screenResLoc, &screenResolution, SHADER_UNIFORM_VEC2 );
 
-    if ( IsMouseButtonDown( MOUSE_BUTTON_LEFT ) ) {
-        if ( circleCount < MAX_CIRCLES ) {
-            circles[circleCount] = (Circle) {
-                .pos = { GetMouseX(), GetMouseY() },
-                .radius = GetRandomValue( 20, 50 ),
-                .color = ColorFromHSV( circleCount, 1.0, 1.0 )
-            };
-            /*circles[circleCount].lightDirection = Vector2Subtract( circles[circleCount].pos, (Vector2) { GetScreenWidth(), 0.0f } );
-            circles[circleCount].lightDirection = Vector2Normalize( circles[circleCount].lightDirection );
-            circles[circleCount].lightDirection.x *= -1;*/
-            circleCount++;
+    if ( IsMouseButtonPressed( MOUSE_BUTTON_LEFT ) ) {
+        createInkDrops( 
+            GetMouseX(), 
+            GetMouseY(), 
+            GetRandomValue( 40, 45 ), 
+            ColorFromHSV( inkDropCount, 1.0, 1.0 ), 
+            3,
+            lightSource
+        );
+    }
+
+    if ( USE_MOUSE_AS_LIGHT_SOURCE ) {
+        for ( int i = 0; i < inkDropCount; i++ ) {
+            circles[i].lightDirection = Vector2Subtract( circles[i].center, GetMousePosition() );
+            circles[i].lightDirection = Vector2Normalize( circles[i].lightDirection );
+            circles[i].lightDirection.x *= -1;
         }
     }
 
-    for ( int i = 0; i < circleCount; i++ ) {
-        circles[i].lightDirection = Vector2Subtract( circles[i].pos, GetMousePosition() );
-        circles[i].lightDirection = Vector2Normalize( circles[i].lightDirection );
-        circles[i].lightDirection.x *= -1;
-    }
-
     if ( IsKeyPressed( KEY_R ) ) {
-        circleCount = 0;
+        inkDropCount = 0;
     }
 
 }
 
-void drawCircle( Circle *c ) {
+void createInkDrop( float x, float y, float radius, Color color, Vector2 lightSource ) {
 
-    Vector2 adjCenter = c->pos;
+    if ( inkDropCount < MAX_INK_DROPS ) {
+        circles[inkDropCount] = (InkDrop) {
+            .center = { x, y },
+            .radius = radius,
+            .color = color
+        };
+        circles[inkDropCount].lightDirection = Vector2Subtract( circles[inkDropCount].center, lightSource );
+        circles[inkDropCount].lightDirection = Vector2Normalize( circles[inkDropCount].lightDirection );
+        circles[inkDropCount].lightDirection.x *= -1;
+        inkDropCount++;
+    }
+
+}
+
+void createInkDrops( float x, float y, float radius, Color color, int quant, Vector2 lightSource ) {
+
+    createInkDrop( x, y, radius, color, lightSource );
+
+    float newAngle;
+    float newRadius;
+    float newDistance;
+    float newX;
+    float newY;
+    Color newColor;
+
+    float prevX = x;
+    float prevY = y;
+    float prevRadius = radius;
+
+    for ( int i = 0; i < quant; i++ ) {
+
+        newAngle = GetRandomValue( 0, 359 );
+        newRadius = prevRadius * 0.7;
+        newDistance = newRadius / 2 * 0.4;
+        newX = prevX + cos( RAD2DEG * newAngle ) * newDistance;
+        newY = prevY + sin( RAD2DEG * newAngle ) * newDistance;
+
+        if ( i % 2 == 0 ) {
+            newColor = (Color){ color.r * 0.3, color.g * 0.3, color.b * 0.3, 255 };
+        } else {
+            newColor = color;
+        }
+
+        createInkDrop( newX, newY, newRadius, newColor, lightSource );
+
+        prevX = newX;
+        prevY = newY;
+        prevRadius = newRadius;
+
+    }
+
+}
+
+void drawInkDrop( InkDrop *c ) {
+
+    Vector2 adjCenter = c->center;
     adjCenter.y = GetScreenHeight() - adjCenter.y;
 
     SetShaderValue( rm.inkDropShader, centerLoc, &adjCenter, SHADER_UNIFORM_VEC2 );
@@ -115,16 +176,7 @@ void drawCircle( Circle *c ) {
     SetShaderValue( rm.inkDropShader, lightDirectionLoc, &c->lightDirection, SHADER_UNIFORM_VEC2 );
 
     BeginShaderMode( rm.inkDropShader );
-    DrawCircleV( c->pos, c->radius, c->color );
-    EndShaderMode();
-
-    float adjRadius = c->radius * 0.95;
-
-    SetShaderValue( rm.alphaShader, centerAlphaLoc, &adjCenter, SHADER_UNIFORM_VEC2 );
-    SetShaderValue( rm.alphaShader, radiusAlphaLoc, &adjRadius, SHADER_UNIFORM_FLOAT );
-
-    BeginShaderMode( rm.alphaShader );
-    DrawCircleV( c->pos, adjRadius, c->color );
+    DrawCircleV( c->center, c->radius, c->color );
     EndShaderMode();
 
 }
@@ -137,12 +189,12 @@ void drawGameWorld( GameWorld *gw ) {
     BeginDrawing();
     ClearBackground( WHITE );
 
-    for ( int i = 0; i < circleCount; i++ ) {
-        drawCircle( &circles[i] );
+    for ( int i = 0; i < inkDropCount; i++ ) {
+        drawInkDrop( &circles[i] );
     }
 
     DrawFPS( 10, 10 );
-    DrawText( TextFormat( "Circle count: %d", circleCount ), 10, 30, 20, BLACK );
+    DrawText( TextFormat( "Ink drop count: %d", inkDropCount ), 10, 30, 20, BLACK );
     EndDrawing();
 
 }
